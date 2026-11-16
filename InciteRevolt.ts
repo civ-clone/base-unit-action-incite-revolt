@@ -2,14 +2,23 @@ import {
   RuleRegistry,
   instance as ruleRegistryInstance,
 } from '@civ-clone/core-rule/RuleRegistry';
+import { CAUGHT_CHECK, ORDINARY } from '@civ-clone/base-unit-agent/lib/escape';
 import Action from '@civ-clone/core-unit/Action';
+import { agentSurvives } from '@civ-clone/base-unit-agent/lib/mission';
 import City from '@civ-clone/core-city/City';
 import Moved from '@civ-clone/core-unit/Rules/Moved';
 import RevoltIncited from './Rules/RevoltIncited';
 import Tile from '@civ-clone/core-world/Tile';
 import Unit from '@civ-clone/core-unit/Unit';
 
-/** A Diplomat pays `cost()` for `city()` to rebel and join its civilization. Whether it can, and what happens to the city, is up to the `RevoltIncited` rules. The Diplomat is used up when the city changes hands. */
+/**
+ * A Diplomat pays `cost()` for `city()` to rebel and join its civilization. Whether it can, and what happens to the
+ * city, is up to the `RevoltIncited` rules.
+ *
+ * Before the mission, the Diplomat must survive a caught check (base-unit-agent's `AgentSurvives` with
+ * `CAUGHT_CHECK`); one that doesn't is destroyed. Once the city changes hands, the Diplomat is used up unless it
+ * survives an `ORDINARY` check. With no `AgentSurvives` rules, the check passes and it is used up.
+ */
 export class InciteRevolt extends Action {
   protected _city: City;
   protected _cost: number;
@@ -48,10 +57,25 @@ export class InciteRevolt extends Action {
     ) as unknown as Action;
   }
 
+  city(): City {
+    return this._city;
+  }
+
   perform(): void {
+    const unit = this.unit(),
+      mission = this as unknown as Action;
+
+    if (!agentSurvives(unit, mission, CAUGHT_CHECK, this.ruleRegistry())) {
+      this.ruleRegistry().process(Moved, unit, mission);
+
+      unit.destroy();
+
+      return;
+    }
+
     const results = this.ruleRegistry().process(
       RevoltIncited,
-      this.unit(),
+      unit,
       this._city,
       this
     );
@@ -61,9 +85,11 @@ export class InciteRevolt extends Action {
       return;
     }
 
-    this.ruleRegistry().process(Moved, this.unit(), this as unknown as Action);
+    this.ruleRegistry().process(Moved, unit, mission);
 
-    this.unit().destroy();
+    if (!agentSurvives(unit, mission, ORDINARY, this.ruleRegistry())) {
+      unit.destroy();
+    }
   }
 }
 

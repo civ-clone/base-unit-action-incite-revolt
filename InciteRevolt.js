@@ -2,10 +2,20 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.InciteRevolt = void 0;
 const RuleRegistry_1 = require("@civ-clone/core-rule/RuleRegistry");
+const escape_1 = require("@civ-clone/base-unit-agent/lib/escape");
 const Action_1 = require("@civ-clone/core-unit/Action");
+const mission_1 = require("@civ-clone/base-unit-agent/lib/mission");
 const Moved_1 = require("@civ-clone/core-unit/Rules/Moved");
 const RevoltIncited_1 = require("./Rules/RevoltIncited");
-/** A Diplomat pays `cost()` for `city()` to rebel and join its civilization. Whether it can, and what happens to the city, is up to the `RevoltIncited` rules. The Diplomat is used up when the city changes hands. */
+/**
+ * A Diplomat pays `cost()` for `city()` to rebel and join its civilization. Whether it can, and what happens to the
+ * city, is up to the `RevoltIncited` rules.
+ *
+ * The mission asks base-unit-agent's seams (its README): `MissionMode` (default `ORDINARY`), then the caught check
+ * (`AgentSurvives` with `CAUGHT_CHECK`; a caught Diplomat goes to `AgentLost` and is destroyed by the city's owner,
+ * with no `Moved`), then the mission, `Moved`, and `AgentSurvives` with the resolved mode (a Diplomat that doesn't
+ * survive goes to `AgentLost` and is destroyed as before). With none of those rules, it is used up as before.
+ */
 class InciteRevolt extends Action_1.default {
     constructor(from, to, unit, city, cost, ruleRegistry = RuleRegistry_1.instance) {
         super(from, to, unit, ruleRegistry);
@@ -22,14 +32,25 @@ class InciteRevolt extends Action_1.default {
     forUnit(unit) {
         return new InciteRevolt(this.from(), this.to(), unit, this._city, this._cost, this.ruleRegistry());
     }
+    city() {
+        return this._city;
+    }
     perform() {
-        const results = this.ruleRegistry().process(RevoltIncited_1.default, this.unit(), this._city, this);
+        const unit = this.unit(), mission = this;
+        const mode = (0, mission_1.missionMode)(unit, mission, escape_1.ORDINARY, this.ruleRegistry());
+        if (!(0, mission_1.agentSurvives)(unit, mission, escape_1.CAUGHT_CHECK, this.ruleRegistry(), undefined, mode)) {
+            (0, mission_1.loseAgent)(unit, this._city, mission, true, this.ruleRegistry(), this._city.player());
+            return;
+        }
+        const results = this.ruleRegistry().process(RevoltIncited_1.default, unit, this._city, this);
         // Refused, say for want of gold: the Diplomat stays where it is.
         if (!results.includes(true)) {
             return;
         }
-        this.ruleRegistry().process(Moved_1.default, this.unit(), this);
-        this.unit().destroy();
+        this.ruleRegistry().process(Moved_1.default, unit, mission);
+        if (!(0, mission_1.agentSurvives)(unit, mission, mode, this.ruleRegistry())) {
+            (0, mission_1.loseAgent)(unit, this._city, mission, false, this.ruleRegistry());
+        }
     }
 }
 exports.InciteRevolt = InciteRevolt;

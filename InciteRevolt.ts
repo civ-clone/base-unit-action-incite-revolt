@@ -4,7 +4,11 @@ import {
 } from '@civ-clone/core-rule/RuleRegistry';
 import { CAUGHT_CHECK, ORDINARY } from '@civ-clone/base-unit-agent/lib/escape';
 import Action from '@civ-clone/core-unit/Action';
-import { agentSurvives } from '@civ-clone/base-unit-agent/lib/mission';
+import {
+  agentSurvives,
+  loseAgent,
+  missionMode,
+} from '@civ-clone/base-unit-agent/lib/mission';
 import City from '@civ-clone/core-city/City';
 import Moved from '@civ-clone/core-unit/Rules/Moved';
 import RevoltIncited from './Rules/RevoltIncited';
@@ -15,9 +19,10 @@ import Unit from '@civ-clone/core-unit/Unit';
  * A Diplomat pays `cost()` for `city()` to rebel and join its civilization. Whether it can, and what happens to the
  * city, is up to the `RevoltIncited` rules.
  *
- * Before the mission, the Diplomat must survive a caught check (base-unit-agent's `AgentSurvives` with
- * `CAUGHT_CHECK`); one that doesn't is destroyed. Once the city changes hands, the Diplomat is used up unless it
- * survives an `ORDINARY` check. With no `AgentSurvives` rules, the check passes and it is used up.
+ * The mission asks base-unit-agent's seams (its README): `MissionMode` (default `ORDINARY`), then the caught check
+ * (`AgentSurvives` with `CAUGHT_CHECK`; a caught Diplomat goes to `AgentLost` and is destroyed by the city's owner,
+ * with no `Moved`), then the mission, `Moved`, and `AgentSurvives` with the resolved mode (a Diplomat that doesn't
+ * survive goes to `AgentLost` and is destroyed as before). With none of those rules, it is used up as before.
  */
 export class InciteRevolt extends Action {
   protected _city: City;
@@ -65,10 +70,26 @@ export class InciteRevolt extends Action {
     const unit = this.unit(),
       mission = this as unknown as Action;
 
-    if (!agentSurvives(unit, mission, CAUGHT_CHECK, this.ruleRegistry())) {
-      this.ruleRegistry().process(Moved, unit, mission);
+    const mode = missionMode(unit, mission, ORDINARY, this.ruleRegistry());
 
-      unit.destroy();
+    if (
+      !agentSurvives(
+        unit,
+        mission,
+        CAUGHT_CHECK,
+        this.ruleRegistry(),
+        undefined,
+        mode
+      )
+    ) {
+      loseAgent(
+        unit,
+        this._city,
+        mission,
+        true,
+        this.ruleRegistry(),
+        this._city.player()
+      );
 
       return;
     }
@@ -87,8 +108,8 @@ export class InciteRevolt extends Action {
 
     this.ruleRegistry().process(Moved, unit, mission);
 
-    if (!agentSurvives(unit, mission, ORDINARY, this.ruleRegistry())) {
-      unit.destroy();
+    if (!agentSurvives(unit, mission, mode, this.ruleRegistry())) {
+      loseAgent(unit, this._city, mission, false, this.ruleRegistry());
     }
   }
 }

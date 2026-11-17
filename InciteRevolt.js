@@ -11,9 +11,10 @@ const RevoltIncited_1 = require("./Rules/RevoltIncited");
  * A Diplomat pays `cost()` for `city()` to rebel and join its civilization. Whether it can, and what happens to the
  * city, is up to the `RevoltIncited` rules.
  *
- * Before the mission, the Diplomat must survive a caught check (base-unit-agent's `AgentSurvives` with
- * `CAUGHT_CHECK`); one that doesn't is destroyed. Once the city changes hands, the Diplomat is used up unless it
- * survives an `ORDINARY` check. With no `AgentSurvives` rules, the check passes and it is used up.
+ * The mission asks base-unit-agent's seams (its README): `MissionMode` (default `ORDINARY`), then the caught check
+ * (`AgentSurvives` with `CAUGHT_CHECK`; a caught Diplomat goes to `AgentLost` and is destroyed by the city's owner,
+ * with no `Moved`), then the mission, `Moved`, and `AgentSurvives` with the resolved mode (a Diplomat that doesn't
+ * survive goes to `AgentLost` and is destroyed as before). With none of those rules, it is used up as before.
  */
 class InciteRevolt extends Action_1.default {
     constructor(from, to, unit, city, cost, ruleRegistry = RuleRegistry_1.instance) {
@@ -36,9 +37,9 @@ class InciteRevolt extends Action_1.default {
     }
     perform() {
         const unit = this.unit(), mission = this;
-        if (!(0, mission_1.agentSurvives)(unit, mission, escape_1.CAUGHT_CHECK, this.ruleRegistry())) {
-            this.ruleRegistry().process(Moved_1.default, unit, mission);
-            unit.destroy();
+        const mode = (0, mission_1.missionMode)(unit, mission, escape_1.ORDINARY, this.ruleRegistry());
+        if (!(0, mission_1.agentSurvives)(unit, mission, escape_1.CAUGHT_CHECK, this.ruleRegistry(), undefined, mode)) {
+            (0, mission_1.loseAgent)(unit, this._city, mission, true, this.ruleRegistry(), this._city.player());
             return;
         }
         const results = this.ruleRegistry().process(RevoltIncited_1.default, unit, this._city, this);
@@ -47,8 +48,8 @@ class InciteRevolt extends Action_1.default {
             return;
         }
         this.ruleRegistry().process(Moved_1.default, unit, mission);
-        if (!(0, mission_1.agentSurvives)(unit, mission, escape_1.ORDINARY, this.ruleRegistry())) {
-            unit.destroy();
+        if (!(0, mission_1.agentSurvives)(unit, mission, mode, this.ruleRegistry())) {
+            (0, mission_1.loseAgent)(unit, this._city, mission, false, this.ruleRegistry());
         }
     }
 }
